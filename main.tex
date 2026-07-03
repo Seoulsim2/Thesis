@@ -43,7 +43,9 @@
     Master of Mathematics\\
     in\\
     Computer Science\par
-    \vspace{1in}
+    \vspace{0.5in}
+    Supervisor: Professor Yuntian Deng\par
+    \vspace{0.5in}
     Waterloo, Ontario, Canada, 2026\par
     \vspace{0.5in}
     \copyright\ Henry Heng Yi Lin 2026
@@ -61,7 +63,9 @@ I understand that my thesis may be made electronically available to the public.
 % 3. Statement of Contributions
 \chapter*{Statement of Contributions}
 \addcontentsline{toc}{chapter}{Statement of Contributions}
+This thesis was written by Henry Heng Yi Lin under the supervision of Professor Yuntian Deng. Unless otherwise stated, the implementation, experiments, analysis, figures, and writing are the author's own work. Professor Deng provided research direction, technical guidance, project infrastructure, and feedback on the framing and interpretation of the results.
 
+The research builds on public and internal software infrastructure for latent diffusion, Diffusion Transformers, Mamba-2, and NeuralOS-style recurrent generation. These systems are cited where they inform the thesis design. The adaptation of these ideas to continuous digital avatar generation, the dataset preprocessing pipeline, the avatar-specific training and evaluation code, and the identity-stability analyses reported in this thesis were conducted by the author.
 
 % 4. Abstract
 \chapter*{Abstract}
@@ -70,9 +74,9 @@ Digital avatars could enable more expressive virtual communication, personalized
 
 This thesis studies continuous digital avatar generation. Given a target identity and a live driving stream, the system aims to render an animated version of the target that follows the driver's expressions and behavior without inheriting the driver's appearance. We develop a recurrent diffusion-based architecture that maintains visual state across time, allowing the avatar to generate extended sequences without repeatedly processing its entire history.
 
-Our experiments reveal that continuous generation introduces a fundamental identity-stability problem. In the baseline system, the avatar gradually loses the target's facial structure and converges toward the identity of the driving person, producing identity leakage in 93\% of evaluated sequences. We introduce explicit identity anchoring, feature-space projection, and knowledge transfer from a pretrained video model to better separate who the avatar is from how it moves. These methods eliminate observed identity leakage under teacher-forced evaluation, reducing it from 93\% to 0\%. However, identity drift can reappear during fully autoregressive generation as small visual errors accumulate over time. We also find that incorporating dense audio representations can disrupt the model's visual memory, highlighting an additional challenge for speech-driven avatars.
+Our experiments reveal that continuous generation introduces a primary identity-stability failure mode. In the baseline autoregressive system, the avatar gradually loses the target's facial structure and converges toward the identity of the driving person, producing identity leakage in 93\% of evaluated frames under our latent-space diagnostic. We introduce explicit identity anchoring, feature-space projection, and knowledge transfer from a pretrained diffusion transformer to better separate who the avatar is from how it moves. Under teacher-forced evaluation with clean historical context, these methods reduce observed identity leakage to 0\%. However, identity drift can reappear during fully autoregressive generation as small visual errors accumulate over time. We also find that incorporating dense audio representations can disrupt the model's visual memory, highlighting an additional challenge for speech-driven avatars.
 
-These results demonstrate progress toward digital avatars that can sustain a coherent visual presence throughout an interaction. They also identify long-term identity preservation, autoregressive stability, and audiovisual integration as key challenges for building persistent, real-time digital humans.
+These results demonstrate progress toward digital avatars that can sustain a coherent visual presence throughout an interaction. They also identify long-term identity preservation, autoregressive stability, and audiovisual integration as key challenges for building persistent digital humans.
 
 % 5. Acknowledgements
 \chapter*{Acknowledgements}
@@ -83,8 +87,12 @@ First and foremost, I would like to express my deepest gratitude to my advisor, 
 \tableofcontents
 
 % 7. List of Figures
-\listoffigures
 \addcontentsline{toc}{chapter}{List of Figures}
+\listoffigures
+
+% 8. List of Tables
+\addcontentsline{toc}{chapter}{List of Tables}
+\listoftables
 
 \clearpage
 
@@ -105,7 +113,7 @@ For digital avatars, this drift is especially damaging because the model must pr
 
 We formulate the avatar task as a bipartite conditioning problem. The \emph{target avatar} supplies identity: the stable geometry and appearance that should persist across the interaction. The \emph{source user} supplies motion: pose, expression, and other dynamic behavior. The model must combine these two streams without allowing the static identity information in the source stream to dominate the target identity.
 
-Our experiments show that this separation is not automatic. In the baseline system, the generated avatar gradually moves toward the driver's facial structure. We refer to this failure mode as \textit{source identity bleed} or \textit{Attractor Overload}: the recurrent visual state finds a strong static attractor in the driver stream and begins to copy it. Under cross-identity evaluation, this baseline produced identity leakage in 93\% of evaluated frames, making identity preservation the central empirical problem of the thesis.
+Our experiments show that this separation is not automatic. In the baseline system, the generated avatar gradually moves toward the driver's facial structure. We refer to this failure mode as \textit{source identity bleed}: the recurrent visual state finds a strong static attractor in the driver stream and begins to copy it. Under autoregressive cross-identity evaluation, this baseline produced identity leakage in 93\% of evaluated frames, making identity preservation the central empirical problem of the thesis.
 
 \section{Why Existing Video Diffusion Backbones Struggle}
 
@@ -117,7 +125,7 @@ Structured State Space Models (SSMs)~\cite{gu2022efficiently}, and Mamba-2 in pa
 
 This thesis develops a recurrent diffusion backbone that combines a DiT-style denoising scaffold with a Mamba-2 Structured State Space Duality (SSD) sequence mixer~\cite{dao2024transformers}. The model processes a dual-stream context window containing source-user motion, target-avatar history, a clean identity anchor, and the noisy target frame to be denoised. To make this structure work for persistent avatars, we introduce identity anchoring, visual scan corrections, state-space decoupling, latent-space projection, and feature distillation from a pretrained video transformer~\cite{t2md2025}.
 
-The resulting system demonstrates a clear boundary. Under teacher-forced evaluation, where the historical context is clean, the proposed interventions eliminate observed identity leakage, reducing it from 93\% to 0\%. This shows that the model can separate who the avatar is from how it moves. Under fully autoregressive generation, however, identity drift can reappear as small visual errors accumulate, indicating that temporal self-conditioning remains the dominant remaining limitation. We also find that dense EnCodec audio tokens~\cite{defossez2023high} can destabilize the visual state, exposing audio-visual alignment as an important future challenge.
+The resulting system demonstrates a clear boundary. Under teacher-forced evaluation, where the historical context is clean, the proposed interventions reduce observed identity leakage to 0\% on the evaluated cross-identity pairs. This shows that the model can separate who the avatar is from how it moves when clean context is available. Under fully autoregressive generation, however, identity drift can reappear as small visual errors accumulate, indicating that temporal self-conditioning remains the dominant remaining limitation. We also find that dense EnCodec audio tokens~\cite{defossez2023high} can destabilize the visual state, exposing audio-visual alignment as an important future challenge.
 
 \section{Core Contributions}
 
@@ -128,7 +136,7 @@ This thesis makes four contributions:
     
     \item \textbf{A Mamba-2 DiT hybrid architecture for recurrent avatar generation.} We replace the quadratic self-attention mixer in a DiT-style diffusion backbone with a linear Mamba-2 SSD sequence mixer, while preserving diffusion timestep conditioning through AdaLN and MLP pathways.
     
-    \item \textbf{Visual manifold stabilization methods for separating identity from motion.} We introduce the Anchor-Last context layout, Sweep-4 spatial scanning, state-space decoupling, Rank-1 Null-Space Projection, and Transformer-to-Mamba Feature Distillation (T2MD)~\cite{t2md2025}. Together, these interventions reduce teacher-forced identity leakage from 93\% to 0\%.
+    \item \textbf{Visual stabilization methods for separating identity from motion.} We introduce the Anchor-Last context layout, Sweep-4 spatial scanning, state-space decoupling, Rank-1 Null-Space Projection, and Transformer-to-Mamba Feature Distillation (T2MD)~\cite{t2md2025}. Together, these interventions reduce observed identity leakage to 0\% under teacher-forced evaluation on the evaluated cross-identity pairs.
     
     \item \textbf{A documented analysis of audio-visual integration failures.} We show that high-bandwidth 32-codebook EnCodec conditioning can flush the finite SSM visual memory, smear audio information across non-mouth regions, and desynchronize under naive 60 fps audio to 15 fps video indexing. These findings define the next stage of work for speech-driven continuous avatars.
 \end{itemize}
@@ -138,16 +146,16 @@ This thesis makes four contributions:
 The remainder of the thesis follows the problem-to-solution arc of the work:
 \begin{itemize}
     \item \textbf{Chapter 2 (Background \& Related Work)} reviews digital avatar generation, latent diffusion, DiTs, SSMs, visual scan biases, conditioning collapse, and audio-visual conditioning.
-    \item \textbf{Chapter 3 (Task Formulation, Dataset, and Diagnostics)} defines the dual-stream avatar task, evaluation modes, experimental setup, identity-leakage metrics, and baseline failure.
+    \item \textbf{Chapter 3 (Task Formulation, Dataset, and Diagnostics)} defines the dual-stream avatar task, Seamless Interaction preprocessing, evaluation modes, experimental setup, identity-leakage metrics, and baseline failure.
     \item \textbf{Chapter 4 (Model Architecture)} presents the Mamba-2 DiT hybrid, context layout, Anchor-Last identity grounding, Sweep-4 cross-scan, state-space decoupling, computational feasibility, and audio bypass.
-    \item \textbf{Chapter 5 (Visual Manifold Stabilization and Results)} reports the manifold-healing interventions and separates teacher-forced success from autoregressive drift.
+    \item \textbf{Chapter 5 (Visual Stabilization and Results)} reports the stabilization interventions and separates teacher-forced success from autoregressive drift.
     \item \textbf{Chapter 6 (Audio-Visual Alignment and Future Work)} analyzes EnCodec integration failures and proposes localized, stride-aware audio conditioning strategies.
     \item \textbf{Chapter 7 (Conclusion)} summarizes the thesis claim: linear scaling enables long-horizon avatars, but identity stability and multimodal alignment are the central scientific challenges.
 \end{itemize}
 
 \chapter{Background \& Related Work}
 
-Continuous digital avatars sit at the intersection of face reenactment~\cite{thies2016face}, image animation~\cite{siarohin2019first}, neural talking-head synthesis~\cite{wang2021facevid2vid}, video diffusion, recurrent sequence modeling, and audio-visual generation. Adjacent work on recurrent diffusion-based interface simulation, such as NeuralOS, reinforces the broader importance of maintaining persistent visual state under interactive control~\cite{rivard2026neuralos}. This chapter reviews these areas in the order needed by the thesis argument. We first situate the avatar task, then review latent diffusion and Diffusion Transformers, then introduce Structured State Space Models (SSMs) and Mamba-2 as a long-context alternative. The final sections focus on the failure modes that become central in later chapters: visual scan bias, conditioning collapse, exposure bias, and high-variance audio conditioning.
+Continuous digital avatars sit at the intersection of face reenactment~\cite{thies2016face}, image animation~\cite{siarohin2019first}, neural talking-head synthesis~\cite{wang2021facevid2vid}, video diffusion, recurrent sequence modeling, and audio-visual generation. Adjacent work on recurrent diffusion-based interface simulation, such as NeuralOS, reinforces the broader importance of maintaining persistent visual state under interactive control~\cite{rivard2026neuralos}. This chapter reviews these areas in the order needed by the thesis argument. We first situate the avatar task and dataset setting, then review latent diffusion and Diffusion Transformers, then introduce Structured State Space Models (SSMs) and Mamba-2 as a long-context alternative. The final sections focus on the failure modes that become central in later chapters: visual scan bias, conditioning collapse, exposure bias, and high-variance audio conditioning.
 
 \section{Digital Avatars and Continuous Face Generation}
 
@@ -155,9 +163,15 @@ Digital avatar generation differs from generic video generation because its degr
 
 Most successful face-generation systems are evaluated over short clips or independently generated windows~\cite{siarohin2019first, wang2021facevid2vid, drobyshev2022megaportraits}. Persistent interaction is stricter. Once an avatar is deployed in an ongoing conversation, the model repeatedly conditions on its own past outputs. Identity preservation therefore becomes a long-horizon state-estimation problem rather than a single-frame image synthesis problem. The core challenge is not only visual fidelity, but stable disentanglement between static identity and dynamic motion.
 
+\section{Dyadic Interaction Datasets}
+
+Training an online avatar requires data in which two participants interact over time, not just single-person talking-head clips. The CANDOR corpus provides a large collection of naturalistic video-chat conversations between strangers, with audio, video, transcripts, and survey metadata~\cite{reece2023candor}. It is well suited for studying conversational behavior, but its video-chat format and broad social-science annotations are not optimized for the paired in-person avatar generation pipeline used in this thesis.
+
+We therefore use the Seamless Interaction dataset as the primary data source~\cite{seamlessinteraction2025}. Seamless contains over 4{,}000 hours of face-to-face dyadic interaction footage from more than 4{,}000 participants, with synchronized video, audio, transcripts, facial/body keypoints, voice activity detection, and interaction metadata. Its two-participant structure is directly aligned with the thesis task: one stream can serve as the live source user, while the other provides target-avatar history and identity context. Because the full dataset is very large, this thesis uses cropped, downsampled face-video subsets as a proof of concept.
+
 \section{Latent Diffusion and Autoregressive Video Generation}
 
-Latent Diffusion Models have fundamentally redefined the state of the art in generative computer vision. By compressing high-dimensional pixel space into a lower-dimensional latent manifold via a Variational Autoencoder (VAE)~\cite{kingma2014autoencoding}, LDMs can perform the iterative denoising process of diffusion models~\cite{ho2020denoising} with significantly higher computational efficiency~\cite{rombach2022highresolution}.
+Latent Diffusion Models have become a standard backbone for high-quality generative computer vision. By compressing high-dimensional pixel space into a lower-dimensional latent manifold via a Variational Autoencoder (VAE)~\cite{kingma2014autoencoding}, LDMs can perform the iterative denoising process of diffusion models~\cite{ho2020denoising} with significantly higher computational efficiency~\cite{rombach2022highresolution}.
 
 Extending LDMs from images to video introduces temporal dependencies~\cite{blattmann2023align}. A standard autoregressive video generator uses a sliding context window in which previously generated frames condition future frames. This design is natural for continuous avatars, but it exposes the model to \textit{exposure bias}: during training the historical context is clean, while during inference the history includes the model's own imperfect generations~\cite{bengio2015scheduled}. Because visual latents are continuous rather than discrete, small out-of-distribution errors can accumulate into structural drift over long rollouts~\cite{statespacediffuser2025}.
 
@@ -226,9 +240,30 @@ The distinction is essential. Teacher forcing tests identity disentanglement und
 
 \section{Dataset and Experimental Setup}
 
-We constructed a curated dual-stream dataset of paired source-driver and target-avatar videos. Visual frames are encoded into continuous VAE latents of shape $C \times H \times W = 16 \times 16 \times 16$. The model uses a patch size of $p=4$, producing a $4 \times 4$ grid of 16 spatial tokens per frame. Temporal sequences are extracted at 15 frames per second to increase the usable history length within GPU memory limits.
+The experiments use the Seamless Interaction dataset~\cite{seamlessinteraction2025}, a large-scale collection of in-person dyadic interactions with synchronized video and audio. This dataset was selected because the thesis task requires two temporally aligned participant streams: a live source stream that supplies motion and a target/avatar stream that supplies identity and history. CANDOR~\cite{reece2023candor} was also considered because it contains naturalistic two-person video-chat conversations, but Seamless is better matched to the face-to-face, paired-stream setting and provides richer embodied-interaction signals for future audio-visual extensions.
 
-All experiments are conducted on the Narval and Mist HPC clusters using NVIDIA H100 80 GB SXM5 accelerators. Optimization uses AdamW~\cite{loshchilov2019decoupled} with base learning rate $1.5 \times 10^{-4}$, and training is run in \texttt{bf16-mixed} precision to match the Mamba-2 fused kernel execution path.
+The full Seamless release is far larger than the compute budget of this thesis, so the work uses face-centered proof-of-concept subsets. Videos are cropped around the participant's face at $384 \times 384$ resolution, then temporally downsampled from 30 fps to 15 fps. The downsampling doubles the temporal span represented by a fixed context window while keeping GPU memory manageable. For storage efficiency, training reads compressed MP4 videos rather than decompressed image folders. Each MP4 is indexed by a companion CSV with rows of the form \texttt{record\_num,image\_num}, where \texttt{record\_num} identifies the video file and \texttt{image\_num} identifies the frame within that video.
+
+Visual frames are encoded with a KL-regularized latent autoencoder initialized from the public LDM \texttt{kl-f16} checkpoint~\cite{rombach2022highresolution}. The autoencoder compresses face crops by a factor of 16, producing continuous latents of shape $C \times H \times W = 16 \times 16 \times 16$. Before training the recurrent diffusion model, the autoencoder is sanity-checked by overfitting small Seamless subsets and comparing reconstructions against the pretrained checkpoint. Figure~\ref{fig:autoencoder_recon} shows representative reconstructions after this preprocessing stage.
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \maybeincludegraphics[width=\textwidth]{comparison_frame_000000.png}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \maybeincludegraphics[width=\textwidth]{comparison_frame_000050.png}
+    \end{minipage}
+    \caption{\textbf{Autoencoder Reconstruction Examples.} Representative Seamless face crops before and after latent autoencoding. These checks verify that the compressed latent space preserves facial structure before the recurrent diffusion model is trained.}
+    \label{fig:autoencoder_recon}
+\end{figure}
+
+The recurrent diffusion model operates on these latents using a context length of $T=7$ frames per visual stream. The reported cross-identity experiments use source-target pairs drawn from the processed Seamless subsets. We refer to the main development pair as the \emph{primary pair}; the \emph{disparate pair} is a source-target combination with larger visible differences in facial structure and appearance. These terms are used only to distinguish the two evaluated cross-identity conditions in Table~\ref{tab:results_leakage}; they are not intended as a general taxonomy of identity distance.
+
+All experiments are conducted on the Narval and Mist HPC clusters using NVIDIA H100 80 GB SXM5 accelerators. Optimization uses AdamW~\cite{loshchilov2019decoupled} with base learning rate $1.5 \times 10^{-4}$, and training is run in \texttt{bf16-mixed} precision to match the Mamba-2 fused kernel execution path. Unless otherwise stated, visual results are reported at 15 fps in latent space after VAE decoding.
 
 \section{Failure Mode: Source Identity Bleed}
 
