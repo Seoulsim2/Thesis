@@ -93,7 +93,7 @@ First and foremost, I would like to express my deepest gratitude to my advisor, 
 
 \chapter{Introduction}
 
-Digital avatars could make remote communication feel less like exchanging compressed video streams and more like sharing a persistent social presence. A useful avatar should not merely generate a short clip of a face. It must remain available throughout an interaction, preserve the appearance of a target person, and respond continuously to another person's motion, expression, and speech. This thesis studies that long-horizon version of avatar generation: given a target identity and a live driving stream, generate an animated target avatar that follows the driver without becoming the driver.
+Digital avatars could make remote communication feel less like exchanging compressed video streams and more like sharing a persistent social presence. Prior face reenactment and neural talking-head systems show that a target face can be animated from a source driver~\cite{thies2016face, wang2021facevid2vid, drobyshev2022megaportraits}. More broadly, recent interactive generative simulators such as NeuralOS show the relevance of maintaining recurrent visual state while rendering frames in response to live inputs~\cite{rivard2026neuralos}. A useful persistent avatar, however, should not merely generate a short clip of a face. It must remain available throughout an interaction, preserve the appearance of a target person, and respond continuously to another person's motion, expression, and speech. This thesis studies that long-horizon version of avatar generation: given a target identity and a live driving stream, generate an animated target avatar that follows the driver without becoming the driver.
 
 \section{Persistent Digital Avatars as a Long-Horizon Generation Problem}
 
@@ -109,15 +109,15 @@ Our experiments show that this separation is not automatic. In the baseline syst
 
 \section{Why Existing Video Diffusion Backbones Struggle}
 
-Latent Diffusion Models (LDMs) and Diffusion Transformers (DiTs) provide strong image and video generation backbones, but continuous avatars stress them in two ways. First, diffusion video generation is vulnerable to exposure bias: during training, the model sees clean historical context, while during inference it must condition on its own imperfect generations. Second, maintaining a long visual history with standard self-attention is expensive because attention scales quadratically, $\mathcal{O}(L^2)$, in the sequence length $L$.
+Latent Diffusion Models (LDMs)~\cite{rombach2022highresolution} and Diffusion Transformers (DiTs)~\cite{peebles2023scalable} provide strong image and video generation backbones, building on denoising diffusion models~\cite{ho2020denoising} and Transformer self-attention~\cite{vaswani2017attention}. Continuous avatars stress them in two ways. First, diffusion video generation is vulnerable to exposure bias: during training, the model sees clean historical context, while during inference it must condition on its own imperfect generations~\cite{bengio2015scheduled}. Second, maintaining a long visual history with standard self-attention is expensive because attention scales quadratically, $\mathcal{O}(L^2)$, in the sequence length $L$.
 
-Structured State Space Models (SSMs), and Mamba-2 in particular, offer a way to process long histories with linear complexity by compressing past tokens into a recurrent hidden state. This makes them attractive for continuous generation. However, their 1D causal scan also introduces a visual inductive bias: spatial tokens from a 2D face must be flattened into a sequence, and identity information must survive finite recurrent memory. Thus, linear scaling is not the thesis goal by itself. It is the architectural constraint under which the harder avatar-stability problem must be solved.
+Structured State Space Models (SSMs)~\cite{gu2022efficiently}, and Mamba-2 in particular~\cite{dao2024transformers}, offer a way to process long histories with linear complexity by compressing past tokens into a recurrent hidden state. This makes them attractive for continuous generation. However, their 1D causal scan also introduces a visual inductive bias: spatial tokens from a 2D face must be flattened into a sequence, and identity information must survive finite recurrent memory~\cite{zhu2024vision, phung2024dimsum}. Thus, linear scaling is not the thesis goal by itself. It is the architectural constraint under which the harder avatar-stability problem must be solved.
 
 \section{Approach and Findings}
 
-This thesis develops a recurrent diffusion backbone that combines a DiT-style denoising scaffold with a Mamba-2 Structured State Space Duality (SSD) sequence mixer. The model processes a dual-stream context window containing source-user motion, target-avatar history, a clean identity anchor, and the noisy target frame to be denoised. To make this structure work for persistent avatars, we introduce identity anchoring, visual scan corrections, state-space decoupling, latent-space projection, and feature distillation from a pretrained video transformer.
+This thesis develops a recurrent diffusion backbone that combines a DiT-style denoising scaffold with a Mamba-2 Structured State Space Duality (SSD) sequence mixer~\cite{dao2024transformers}. The model processes a dual-stream context window containing source-user motion, target-avatar history, a clean identity anchor, and the noisy target frame to be denoised. To make this structure work for persistent avatars, we introduce identity anchoring, visual scan corrections, state-space decoupling, latent-space projection, and feature distillation from a pretrained video transformer~\cite{t2md2025}.
 
-The resulting system demonstrates a clear boundary. Under teacher-forced evaluation, where the historical context is clean, the proposed interventions eliminate observed identity leakage, reducing it from 93\% to 0\%. This shows that the model can separate who the avatar is from how it moves. Under fully autoregressive generation, however, identity drift can reappear as small visual errors accumulate, indicating that temporal self-conditioning remains the dominant remaining limitation. We also find that dense EnCodec audio tokens can destabilize the visual state, exposing audio-visual alignment as an important future challenge.
+The resulting system demonstrates a clear boundary. Under teacher-forced evaluation, where the historical context is clean, the proposed interventions eliminate observed identity leakage, reducing it from 93\% to 0\%. This shows that the model can separate who the avatar is from how it moves. Under fully autoregressive generation, however, identity drift can reappear as small visual errors accumulate, indicating that temporal self-conditioning remains the dominant remaining limitation. We also find that dense EnCodec audio tokens~\cite{defossez2023high} can destabilize the visual state, exposing audio-visual alignment as an important future challenge.
 
 \section{Core Contributions}
 
@@ -128,7 +128,7 @@ This thesis makes four contributions:
     
     \item \textbf{A Mamba-2 DiT hybrid architecture for recurrent avatar generation.} We replace the quadratic self-attention mixer in a DiT-style diffusion backbone with a linear Mamba-2 SSD sequence mixer, while preserving diffusion timestep conditioning through AdaLN and MLP pathways.
     
-    \item \textbf{Visual manifold stabilization methods for separating identity from motion.} We introduce the Anchor-Last context layout, Sweep-4 spatial scanning, state-space decoupling, Rank-1 Null-Space Projection, and Transformer-to-Mamba Feature Distillation (T2MD). Together, these interventions reduce teacher-forced identity leakage from 93\% to 0\%.
+    \item \textbf{Visual manifold stabilization methods for separating identity from motion.} We introduce the Anchor-Last context layout, Sweep-4 spatial scanning, state-space decoupling, Rank-1 Null-Space Projection, and Transformer-to-Mamba Feature Distillation (T2MD)~\cite{t2md2025}. Together, these interventions reduce teacher-forced identity leakage from 93\% to 0\%.
     
     \item \textbf{A documented analysis of audio-visual integration failures.} We show that high-bandwidth 32-codebook EnCodec conditioning can flush the finite SSM visual memory, smear audio information across non-mouth regions, and desynchronize under naive 60 fps audio to 15 fps video indexing. These findings define the next stage of work for speech-driven continuous avatars.
 \end{itemize}
@@ -147,23 +147,23 @@ The remainder of the thesis follows the problem-to-solution arc of the work:
 
 \chapter{Background \& Related Work}
 
-Continuous digital avatars sit at the intersection of face reenactment, video diffusion, recurrent sequence modeling, and audio-visual generation. This chapter reviews those areas in the order needed by the thesis argument. We first situate the avatar task, then review latent diffusion and Diffusion Transformers, then introduce Structured State Space Models (SSMs) and Mamba-2 as a long-context alternative. The final sections focus on the failure modes that become central in later chapters: visual scan bias, conditioning collapse, exposure bias, and high-variance audio conditioning.
+Continuous digital avatars sit at the intersection of face reenactment~\cite{thies2016face}, image animation~\cite{siarohin2019first}, neural talking-head synthesis~\cite{wang2021facevid2vid}, video diffusion, recurrent sequence modeling, and audio-visual generation. Adjacent work on recurrent diffusion-based interface simulation, such as NeuralOS, reinforces the broader importance of maintaining persistent visual state under interactive control~\cite{rivard2026neuralos}. This chapter reviews these areas in the order needed by the thesis argument. We first situate the avatar task, then review latent diffusion and Diffusion Transformers, then introduce Structured State Space Models (SSMs) and Mamba-2 as a long-context alternative. The final sections focus on the failure modes that become central in later chapters: visual scan bias, conditioning collapse, exposure bias, and high-variance audio conditioning.
 
 \section{Digital Avatars and Continuous Face Generation}
 
-Digital avatar generation differs from generic video generation because its degrees of freedom are semantically constrained. The model is not free to hallucinate a new person at each time step. It must preserve a target identity while importing motion from a separate driving signal. This creates a dual-stream structure: one stream defines \emph{who} should appear, and the other defines \emph{how} that person should move.
+Digital avatar generation differs from generic video generation because its degrees of freedom are semantically constrained. The model is not free to hallucinate a new person at each time step. It must preserve a target identity while importing motion from a separate driving signal, a goal shared by image-animation and neural-head-avatar systems~\cite{siarohin2019first, drobyshev2022megaportraits}. This creates a dual-stream structure: one stream defines \emph{who} should appear, and the other defines \emph{how} that person should move.
 
-Most successful face-generation systems are evaluated over short clips or independently generated windows. Persistent interaction is stricter. Once an avatar is deployed in an ongoing conversation, the model repeatedly conditions on its own past outputs. Identity preservation therefore becomes a long-horizon state-estimation problem rather than a single-frame image synthesis problem. The core challenge is not only visual fidelity, but stable disentanglement between static identity and dynamic motion.
+Most successful face-generation systems are evaluated over short clips or independently generated windows~\cite{siarohin2019first, wang2021facevid2vid, drobyshev2022megaportraits}. Persistent interaction is stricter. Once an avatar is deployed in an ongoing conversation, the model repeatedly conditions on its own past outputs. Identity preservation therefore becomes a long-horizon state-estimation problem rather than a single-frame image synthesis problem. The core challenge is not only visual fidelity, but stable disentanglement between static identity and dynamic motion.
 
 \section{Latent Diffusion and Autoregressive Video Generation}
 
-Latent Diffusion Models have fundamentally redefined the state of the art in generative computer vision. By compressing high-dimensional pixel space into a lower-dimensional latent manifold via a Variational Autoencoder (VAE), LDMs can perform the iterative denoising process with significantly higher computational efficiency~\cite{rombach2022highresolution}.
+Latent Diffusion Models have fundamentally redefined the state of the art in generative computer vision. By compressing high-dimensional pixel space into a lower-dimensional latent manifold via a Variational Autoencoder (VAE)~\cite{kingma2014autoencoding}, LDMs can perform the iterative denoising process of diffusion models~\cite{ho2020denoising} with significantly higher computational efficiency~\cite{rombach2022highresolution}.
 
 Extending LDMs from images to video introduces temporal dependencies~\cite{blattmann2023align}. A standard autoregressive video generator uses a sliding context window in which previously generated frames condition future frames. This design is natural for continuous avatars, but it exposes the model to \textit{exposure bias}: during training the historical context is clean, while during inference the history includes the model's own imperfect generations~\cite{bengio2015scheduled}. Because visual latents are continuous rather than discrete, small out-of-distribution errors can accumulate into structural drift over long rollouts~\cite{statespacediffuser2025}.
 
 \section{Diffusion Transformers and the Attention Bottleneck}
 
-Historically, LDMs relied on U-Net backbones with spatial convolutions and downsampling~\cite{rombach2022highresolution}. Diffusion Transformers (DiTs) replace that convolutional backbone with a transformer-style architecture that patchifies latent representations and processes them through multi-head self-attention, Adaptive Layer Normalization (AdaLN), and MLP blocks~\cite{peebles2023scalable}. This design provides expressive latent routing and has become a strong baseline for scalable diffusion models.
+Historically, LDMs relied on U-Net backbones with spatial convolutions and downsampling~\cite{rombach2022highresolution}. Diffusion Transformers (DiTs) replace that convolutional backbone with a transformer-style architecture~\cite{vaswani2017attention} that patchifies latent representations and processes them through multi-head self-attention, Adaptive Layer Normalization (AdaLN), and MLP blocks~\cite{peebles2023scalable}. This design provides expressive latent routing and has become a strong baseline for scalable diffusion models.
 
 The limitation for continuous avatars is context length. Self-attention scales quadratically, $\mathcal{O}(L^2)$, with sequence length $L$~\cite{peebles2023scalable}. A persistent avatar model must maintain source-user motion, target-avatar history, identity anchors, and the current denoising target across time. As the context grows, the attention matrix becomes the computational bottleneck. This motivates replacing the attention mixer with a recurrent sequence mixer that can preserve long history without reprocessing every pairwise token interaction.
 
@@ -189,7 +189,7 @@ Several strategies are relevant to this failure mode. Scheduled sampling and con
 
 \section{Audio-Visual Conditioning for Speech-Driven Avatars}
 
-A complete conversational avatar must eventually respond to speech as well as facial motion. Audio conditioning is attractive because it can drive mouth shape, timing, and subtle speaking dynamics. However, dense audio representations are not naturally aligned with spatial visual tokens. High-bandwidth EnCodec streams, for example, provide many discrete codebook tokens per visual frame. If these tokens are inserted into a finite-capacity recurrent visual state without structure, they can behave as high-variance noise.
+A complete conversational avatar must eventually respond to speech as well as facial motion. Audio conditioning is attractive because it can drive mouth shape, timing, and subtle speaking dynamics, as demonstrated by speech-to-lip generation systems such as Wav2Lip~\cite{prajwal2020wav2lip}. However, dense audio representations are not naturally aligned with spatial visual tokens. High-bandwidth EnCodec streams~\cite{defossez2023high}, for example, provide many discrete codebook tokens per visual frame. If these tokens are inserted into a finite-capacity recurrent visual state without structure, they can behave as high-variance noise.
 
 This thesis therefore treats audio as both a goal and a boundary. The visual experiments establish how to stabilize identity under motion-driven generation. The audio chapter later documents why naive high-bandwidth audio integration disrupts that stability, and why future systems need localized spatial routing and stride-aware temporal indexing.
 
@@ -228,7 +228,7 @@ The distinction is essential. Teacher forcing tests identity disentanglement und
 
 We constructed a curated dual-stream dataset of paired source-driver and target-avatar videos. Visual frames are encoded into continuous VAE latents of shape $C \times H \times W = 16 \times 16 \times 16$. The model uses a patch size of $p=4$, producing a $4 \times 4$ grid of 16 spatial tokens per frame. Temporal sequences are extracted at 15 frames per second to increase the usable history length within GPU memory limits.
 
-All experiments are conducted on the Narval and Mist HPC clusters using NVIDIA H100 80 GB SXM5 accelerators. Optimization uses AdamW with base learning rate $1.5 \times 10^{-4}$, and training is run in \texttt{bf16-mixed} precision to match the Mamba-2 fused kernel execution path.
+All experiments are conducted on the Narval and Mist HPC clusters using NVIDIA H100 80 GB SXM5 accelerators. Optimization uses AdamW~\cite{loshchilov2019decoupled} with base learning rate $1.5 \times 10^{-4}$, and training is run in \texttt{bf16-mixed} precision to match the Mamba-2 fused kernel execution path.
 
 \section{Failure Mode: Source Identity Bleed}
 
@@ -287,11 +287,11 @@ In the canonical Diffusion Transformer (DiT) \cite{peebles2023scalable}, each ba
 
 The Mamba-2 Structured State-Space Duality (SSD) layer \cite{dao2024transformers} provides a linear-time alternative: a selective scan over the input sequence with $\mathcal{O}(L)$ time and $\mathcal{O}(1)$ recurrent state per token. We therefore replace the multi-head self-attention mixer in each of the 12 backbone DiT blocks with a Mamba-2 SSD block (\texttt{model\_mode = 'mamba'} in our implementation), while preserving the Adaptive Layer Normalization with Zero-initialization (AdaLN-Zero) conditioning stack surrounding each block.
 
-Concretely, each \texttt{DiTMambaBlock} computes six AdaLN-Zero modulation parameters:
+Concretely, each \texttt{DiTMambaBlock} computes six AdaLN-Zero modulation parameters~\cite{peebles2023scalable}:
 
 (\texttt{shift\_msa}, \texttt{scale\_msa}, \texttt{gate\_msa}, \texttt{shift\_mlp}, \texttt{scale\_mlp}, \texttt{gate\_mlp}),
 
-\noindent from the diffusion timestep embedding via a zero-initialized SiLU-Linear head. It applies them to the pre-normalized input before and after the Mamba-2 mixer and the subsequent MLP respectively, and adds gated residual connections---identical in structure to the original DiTBlock except that \texttt{nn.MultiheadAttention} is replaced by \texttt{mamba\_ssm.Mamba2}.
+\noindent from the diffusion timestep embedding via a zero-initialized SiLU-Linear head. It applies them to the pre-normalized input before and after the Mamba-2 mixer and the subsequent MLP respectively, and adds gated residual connections---identical in structure to the original DiTBlock except that \texttt{nn.MultiheadAttention}~\cite{vaswani2017attention} is replaced by \texttt{mamba\_ssm.Mamba2}.
 
 Because the token sequence interleaves multiple streams (user visual, avatar visual, anchor, and target) each representing a $4 \times 4$ spatial patch grid, a naive 1D causal scan would discard vertical spatial locality within each frame. We therefore wrap the Mamba-2 layer in a Sweep-4 cross-scan: for each frame's contiguous $h \times w$ token block, four directional Mamba passes are run (row-major forward, row-major reverse, column-major forward, column-major reverse) and their outputs are summed before re-insertion into the sequence. This batch-concatenation strategy maximizes kernel utilization by processing all four sweeps in a single Mamba forward call.
 
@@ -301,7 +301,7 @@ The resulting token sequence, in the canonical Sweep-4 configuration, follows th
 \begin{center}
     \texttt{[ user\_1 ... user\_7 | avatar\_1 ... avatar\_7 | anchor x 4 | target ]}
 \end{center}
-where each visual frame occupies 16 spatial patch tokens (\texttt{patch\_size = 4} over a $16 \times 16$ latent), giving a total sequence length of $L = 7 \times 16 + 7 \times 16 + 4 \times 16 + 1 \times 16 = 304$ tokens. The anchor token is placed last (\texttt{anchor\_position = 'last'}) and repeated four times to compensate for LayerNorm magnitude normalization, ensuring the identity signal remains salient at the end of the causal scan immediately preceding the denoising target.
+where each visual frame occupies 16 spatial patch tokens (\texttt{patch\_size = 4} over a $16 \times 16$ latent), giving a total sequence length of $L = 7 \times 16 + 7 \times 16 + 4 \times 16 + 1 \times 16 = 304$ tokens. The anchor token is placed last (\texttt{anchor\_position = 'last'}) and repeated four times to compensate for LayerNorm magnitude normalization~\cite{ba2016layer}, ensuring the identity signal remains salient at the end of the causal scan immediately preceding the denoising target.
 
 Audio conditioning (32-codebook EnCodec tokens, 5 tokens per frame) is present in the Sweep-4 model but is not appended to the main Mamba sequence. Instead, it is injected onto the denoising target tokens via a separate, lightweight residual cross-attention bypass (\texttt{audio\_cross\_attn}, zero-gated at initialization), decoupling audio alignment from the linear scan and preserving the $\mathcal{O}(L)$ complexity of the backbone.
 
@@ -573,7 +573,7 @@ compressed. We exploit this property by placing the identity anchor
 number of intervening tokens and thereby maximizing the anchor's influence on
 the denoised output. %
 
-\subsection{The LayerNorm Cancellation Problem and 4$\times$ Repetition}
+\subsection{The LayerNorm Cancellation Problem and \texorpdfstring{4$\times$}{4x} Repetition}
 
 A naive strategy to boost anchor saliency is to scale its token magnitudes by
 a constant $\sigma$ (we use $\sigma = 2.5$, termed \texttt{anchor\_saliency\_scale}).
@@ -619,7 +619,7 @@ identity signal uncorrupted by the diffusion noise schedule. %
 
 During training, the anchor (along with user and avatar visual streams) is
 zeroed with probability $p_{\mathrm{cfg}} = 0.10$ to enable Classifier-Free
-Guidance (CFG) at inference. This forces the model to learn an unconditional
+Guidance (CFG) at inference~\cite{ho2021classifierfree}. This forces the model to learn an unconditional
 generation mode that can be interpolated with the conditioned mode at sampling
 time via the guidance scale $w$:
 %
@@ -656,7 +656,7 @@ optimized for sequential pattern extraction) and the AdaLN conditioning (which
 provides global timestep/noise-level context) compete for representational
 capacity in the shared hidden dimension. %
 
-\subsection{The \texttt{torch.no\_grad()} Decoupling Strategy}
+\subsection{The \texorpdfstring{\texttt{torch.no\_grad()}}{torch.no-grad()} Decoupling Strategy}
 
 Our solution partitions each \texttt{DiTMambaBlock} into two zones: %
 
@@ -710,7 +710,7 @@ All experiments are conducted on the Narval and Mist HPC clusters, utilizing
 NVIDIA H100 80\,GB HBM3 GPUs (SXM5 form factor, 700\,W TDP). Single-GPU
 training is used throughout (no model or data parallelism), simplifying
 reproducibility and eliminating communication overhead. Optimization is performed 
-using the AdamW optimizer with a base learning rate of $1.5 \times 10^{-4}$. 
+using the AdamW optimizer~\cite{loshchilov2019decoupled} with a base learning rate of $1.5 \times 10^{-4}$. 
 To maximize Tensor Core throughput on the H100, the PyTorch Lightning trainer 
 is configured for \texttt{bf16-mixed} precision, complementing the explicit 
 \texttt{torch.bfloat16} casting within the Mamba-2 kernels. %
@@ -922,11 +922,11 @@ The full digital-avatar goal requires speech-driven motion as well as visual mot
 
 \section{Why Audio Matters}
 
-Motion-driven avatars can follow head pose and expression from a source video, but realistic face-to-face interaction also requires speech synchronization. Audio can provide timing and phonetic information that may not be recoverable from visual context alone. A speech-driven avatar therefore needs to route acoustic information into the lower face while protecting the upper-face geometry and identity features that should remain stable.
+Motion-driven avatars can follow head pose and expression from a source video, but realistic face-to-face interaction also requires speech synchronization~\cite{prajwal2020wav2lip}. Audio can provide timing and phonetic information that may not be recoverable from visual context alone. A speech-driven avatar therefore needs to route acoustic information into the lower face while protecting the upper-face geometry and identity features that should remain stable.
 
 \section{EnCodec Integration Attempt}
 
-We experimented with a high-bandwidth EnCodec representation operating at 24 kbps with 32 discrete codebooks. During the audio phase, the DiT routing modules were expanded with 32 parallel \texttt{nn.Embedding} tables that projected the discrete audio tokens into the same hidden dimension as the visual tokens. This design was attractive because it preserved detailed acoustic information, but it also introduced a high-variance stream that was much denser than the visual context.
+We experimented with a high-bandwidth EnCodec representation~\cite{defossez2023high} operating at 24 kbps with 32 discrete codebooks. During the audio phase, the DiT routing modules were expanded with 32 parallel \texttt{nn.Embedding} tables that projected the discrete audio tokens into the same hidden dimension as the visual tokens. This design was attractive because it preserved detailed acoustic information, but it also introduced a high-variance stream that was much denser than the visual context.
 
 \section{Failure 1: High-Variance Memory Flushing}
 
