@@ -18,12 +18,12 @@
 
 % --- Front Matter ---
 \pagenumbering{roman}
-%Autoregressive Digital Avatars via Mamba-2 DiT Hybrids:\\ Overcoming Exposure Bias and Conditioning Collapse in Latent Manifolds
+
 % 1. Title Page (Page i, number omitted)
 \begin{titlepage}
     \centering
     \vspace*{1in}
-    {\Large \bfseries NeuralFace: Generative Models for Real-Time Face-to-Face Interaction \par}
+    {\Large \bfseries NeuralFace: Generative Models for \\ Real-Time Face-to-Face Interaction \par}
     \vspace{1.5in}
     by\par
     \vspace{0.5in}
@@ -61,14 +61,11 @@ I understand that my thesis may be made electronically available to the public.
 \addcontentsline{toc}{chapter}{Abstract}
 Digital avatars could enable more expressive virtual communication, personalized AI assistants, and new forms of telepresence. However, most existing avatar-generation systems focus on producing short video clips. A digital avatar that participates in an ongoing interaction must instead generate video continuously while preserving its identity, responding naturally to speech and facial motion, and remaining visually coherent over long periods of time.
 
-This thesis studies continuous digital avatar generation. Given a target identity and a live driving stream, the system aims to render an animated version of the target that follows the driver’s expressions and behavior without inheriting the driver’s appearance. We develop a recurrent diffusion-based architecture that maintains visual state across time, allowing the avatar to generate extended sequences without repeatedly processing its entire history.
+This thesis studies continuous digital avatar generation. Given a target identity and a live driving stream, the system aims to render an animated version of the target that follows the driver's expressions and behavior without inheriting the driver's appearance. We develop a recurrent diffusion-based architecture that maintains visual state across time, allowing the avatar to generate extended sequences without repeatedly processing its entire history.
 
-Our experiments reveal that continuous generation introduces a fundamental identity-stability problem. In the baseline system, the avatar gradually loses the target’s facial structure and converges toward the identity of the driving person, producing identity leakage in 93\% of evaluated sequences. We introduce explicit identity anchoring, feature-space projection, and knowledge transfer from a pretrained video model to better separate who the avatar is from how it moves. These methods eliminate observed identity leakage under teacher-forced evaluation, reducing it from 93\% to 0\%. However, identity drift can reappear during fully autoregressive generation as small visual errors accumulate over time. We also find that incorporating dense audio representations can disrupt the model’s visual memory, highlighting an additional challenge for speech-driven avatars.
+Our experiments reveal that continuous generation introduces a fundamental identity-stability problem. In the baseline system, the avatar gradually loses the target's facial structure and converges toward the identity of the driving person, producing identity leakage in 93\% of evaluated sequences. We introduce explicit identity anchoring, feature-space projection, and knowledge transfer from a pretrained video model to better separate who the avatar is from how it moves. These methods eliminate observed identity leakage under teacher-forced evaluation, reducing it from 93\% to 0\%. However, identity drift can reappear during fully autoregressive generation as small visual errors accumulate over time. We also find that incorporating dense audio representations can disrupt the model's visual memory, highlighting an additional challenge for speech-driven avatars.
 
 These results demonstrate progress toward digital avatars that can sustain a coherent visual presence throughout an interaction. They also identify long-term identity preservation, autoregressive stability, and audiovisual integration as key challenges for building persistent, real-time digital humans.
-%The generation of temporally continuous, high-fidelity video remains a profound challenge in deep learning, primarily constrained by the quadratic $O(L^2)$ computational complexity of standard multi-head self-attention. This thesis investigates the architectural feasibility of replacing traditional attention mechanisms with a linear $O(L)$ Structured State Space Duality (SSD) sequence mixer---specifically Mamba-2---within a Diffusion Transformer (DiT) backbone. The model is rigorously evaluated on the highly constrained task of dual-stream digital avatar synthesis.
-
-%During empirical validation, we identified a critical vulnerability in autoregressive state-space models: conditioning collapse. Without explicit geometric grounding, the continuous causal scan suffers from exposure bias, regressing to the most dominant static attractor in the temporal sequence. In our baseline evaluations, this resulted in a 93\% identity leakage rate, where the generated video incorrectly adopted the static facial geometry of the driving source instead of the target. To stabilize the latent manifold, we introduce the ``Anchor-Last'' context paradigm, Rank-1 Null-Space Projection, and Transformer-to-Mamba Feature Distillation (T2MD). These mathematical interventions successfully forced manifold disentanglement. When evaluated under ground-truth teacher forcing, the model completely eradicated geometric bias, achieving a 0.00\% identity leakage rate and proving absolute spatial disentanglement. However, during pure autoregressive rollouts, we document the re-emergence of exposure bias, highlighting the extreme sensitivity of continuous causal scans to temporal drift. Finally, this work documents the architectural disruptions caused by high-variance 32-codebook EnCodec audio streams, demonstrating how dense acoustic conditioning flushes the sequence mixer's spatial memory, and explicitly framing multimodal integration as the immediate frontier for continuous SSM video generation.
 
 % 5. Acknowledgements
 \chapter*{Acknowledgements}
@@ -89,7 +86,7 @@ First and foremost, I would like to express my deepest gratitude to my advisor, 
 
 \chapter{Introduction}
 
-The generation of highly photorealistic, temporally continuous video sequences remains one of the most formidable frontiers in deep generative modeling. While Latent Diffusion Models (LDMs) have demonstrated unprecedented success in high-fidelity text-to-image synthesis, extending these architectures to the temporal domain has historically been constrained by fundamental computational bottlenecks. The recent transition from U-Net based backbones to Diffusion Transformers (DiTs) has enabled greater architectural scalability and refined latent routing. However, standard DiTs rely on global self-attention mechanisms, which inherently suffer from a quadratic $O(L^2)$ computational complexity with respect to the sequence length $L$. For high-framerate, long-horizon video generation---such as the continuous, infinite-length synthesis of digital human avatars at 60 frames per second---this quadratic scaling renders deep autoregressive rollouts computationally intractable. 
+Digital avatars hold the potential to revolutionize virtual communication, enabling personalized AI assistants and immersive telepresence. However, building a digital human that can participate in an ongoing, real-time interaction requires generating video continuously while preserving a coherent visual identity. The generation of highly photorealistic, temporally continuous video sequences remains one of the most formidable frontiers in deep generative modeling. While Latent Diffusion Models (LDMs) have demonstrated unprecedented success in high-fidelity text-to-image synthesis, extending these architectures to the temporal domain has historically been constrained by fundamental computational bottlenecks. The recent transition from U-Net based backbones to Diffusion Transformers (DiTs) has enabled greater architectural scalability and refined latent routing. However, standard DiTs rely on global self-attention mechanisms, which inherently suffer from a quadratic $O(L^2)$ computational complexity with respect to the sequence length $L$. For high-framerate, long-horizon video generation---such as the continuous, infinite-length synthesis of digital human avatars at 60 frames per second---this quadratic scaling renders deep autoregressive rollouts computationally intractable. 
 
 This thesis investigates a novel structural paradigm designed to overcome these temporal constraints: the integration of a Structured State Space Duality (SSD) sequence mixer---specifically Mamba-2---within a Diffusion Transformer scaffold. By explicitly decoupling the generative diffusion optimization path from the recurrent temporal memory, this work presents a hybrid architecture capable of theoretically continuous video generation at a linear $O(L)$ computational complexity.
 
@@ -152,13 +149,14 @@ This handoff of the discrete convolutional and SSM states allows the model to pr
 Despite these theoretical scaling advantages, integrating SSMs into visual diffusion paradigms introduces a severe architectural vulnerability known as the \textit{linear scan pitfall}~\cite{zhu2024vision, phung2024dimsum}. Mamba architectures are fundamentally designed for 1D causal sequence modeling~\cite{gu2022efficiently}. Forcing 2D spatial patches into a flattened 1D sequence disrupts the model's inductive spatial bias~\cite{zhu2024vision}. Without intervention, this pure sequential scanning degrades high-frequency spatial locality, forcing the network to favor low-frequency structural representations and severely destabilizing the latent manifold~\cite{phung2024dimsum}.
 
 \section{Conditioning Collapse and Exposure Bias Mitigation}
-The challenge of dual-stream video generation—where a network must balance dynamic driving motion against a static target identity—ruthlessly exposes the limits of causal sequence mixers~\cite{dao2024transformers}. When training a hybrid Mamba model from scratch, the network frequently suffers from \textit{Conditioning Collapse}~\cite{statespacediffuser2025, t2md2025}. 
+The challenge of dual-stream video generation—where a network must balance dynamic driving motion against a static target identity—ruthlessly exposes the limits of causal sequence mixers~\cite{dao2024transformers}. When training a hybrid Mamba model from scratch, the network frequently suffers from \textit{Conditioning Collapse}~\cite{statespacediffuser2025, t2md2025}. In the context of digital humans, this manifests as a fundamental identity-stability problem. 
 
-This collapse originates from overfitting to deterministic teacher forcing during training~\cite{t2md2025}. Because the model is always fed clean, ground-truth context, the internal hidden states never encounter the out-of-distribution (OOD) noise they will inevitably produce during autoregressive inference~\cite{statespacediffuser2025}. As a result, the model fails to learn robust recovery mechanics. When deployed, minor latent errors compound, causing the selective scan to regress toward the most dominant static attractor in the sequence~\cite{statespacediffuser2025}.
+This collapse originates from overfitting to deterministic teacher forcing during training~\cite{t2md2025}. Because the model is always fed clean, ground-truth context, the internal hidden states never encounter the out-of-distribution (OOD) noise they will inevitably produce during autoregressive inference~\cite{statespacediffuser2025}. As a result, the model fails to learn robust recovery mechanics. When deployed, minor latent errors compound, causing the selective scan to regress toward the most dominant static attractor in the sequence, ultimately resulting in severe identity leakage~\cite{statespacediffuser2025}.
 
 Contemporary literature addresses exposure bias through progressive corruption strategies. Techniques such as scheduled sampling and context noise injection purposefully corrupt historical conditioning frames with Gaussian noise, forcing the denoiser to rely on core structural features rather than memorized sequences. 
 
 Additionally, preventing the generative diffusion optimization path from rewriting the core temporal memory is paramount. In hybrid architectures, if the gradients from the diffusion objective are permitted to flow freely into the recurrent state matrix, the model risks destroying its learned temporal inductive biases. Resolving this requires explicit state-space decoupling, isolating the frozen long-context sequence mixer from the trainable DiT-style conditioning matrices. Mitigating this collapse while preserving the $O(L)$ linear scaling of the Mamba-2 backbone forms the foundational objective of the methodology proposed in this thesis.
+
 % ===========================================================================
 % Chapter 3: Architectural Setup & The Anchor-Last Paradigm
 % ===========================================================================
@@ -187,7 +185,6 @@ In the canonical Diffusion Transformer (DiT) \cite{peebles2023scalable}, each ba
 The Mamba-2 Structured State-Space Duality (SSD) layer \cite{dao2024transformers} provides a linear-time alternative: a selective scan over the input sequence with $\mathcal{O}(L)$ time and $\mathcal{O}(1)$ recurrent state per token. We therefore replace the multi-head self-attention mixer in each of the 12 backbone DiT blocks with a Mamba-2 SSD block (\texttt{model\_mode = 'mamba'} in our implementation), while preserving the Adaptive Layer Normalization with Zero-initialization (AdaLN-Zero) conditioning stack surrounding each block.
 
 Concretely, each \texttt{DiTMambaBlock} computes six AdaLN-Zero modulation parameters,
-
 (\texttt{shift\_msa}, \texttt{scale\_msa}, \texttt{gate\_msa}, \texttt{shift\_mlp}, \texttt{scale\_mlp}, \texttt{gate\_mlp}) from the diffusion timestep embedding via a zero-initialized SiLU-Linear head. It applies them to the pre-normalized input before and after the Mamba-2 mixer and the subsequent MLP respectively, and adds gated residual connections---identical in structure to the original DiTBlock except that \texttt{nn.MultiheadAttention} is replaced by \texttt{mamba\_ssm.Mamba2}.
 
 Because the token sequence interleaves multiple streams (user visual, avatar visual, anchor, and target) each representing a $4 \times 4$ spatial patch grid, a naive 1D causal scan would discard vertical spatial locality within each frame. We therefore wrap the Mamba-2 layer in a Sweep-4 cross-scan: for each frame's contiguous $h \times w$ token block, four directional Mamba passes are run (row-major forward, row-major reverse, column-major forward, column-major reverse) and their outputs are summed before re-insertion into the sequence. This batch-concatenation strategy maximizes kernel utilization by processing all four sweeps in a single Mamba forward call.
@@ -201,6 +198,7 @@ The resulting token sequence, in the canonical Sweep-4 configuration, follows th
 where each visual frame occupies 16 spatial patch tokens (\texttt{patch\_size = 4} over a $16 \times 16$ latent), giving a total sequence length of $L = 7 \times 16 + 7 \times 16 + 4 \times 16 + 1 \times 16 = 304$ tokens. The anchor token is placed last (\texttt{anchor\_position = 'last'}) and repeated four times to compensate for LayerNorm magnitude normalization, ensuring the identity signal remains salient at the end of the causal scan immediately preceding the denoising target.
 
 Audio conditioning (32-codebook EnCodec tokens, 5 tokens per frame) is present in the Sweep-4 model but is not appended to the main Mamba sequence. Instead, it is injected onto the denoising target tokens via a separate, lightweight residual cross-attention bypass (\texttt{audio\_cross\_attn}, zero-gated at initialization), decoupling audio alignment from the linear scan and preserving the $\mathcal{O}(L)$ complexity of the backbone.
+
 \subsection{Layer Anatomy}
 
 Each of the $D=12$ layers in the backbone is an instance of \texttt{DiTMambaBlock},
@@ -554,12 +552,6 @@ However, this approach has two critical drawbacks: %
 
 Instead of embedding audio in the main sequence, we employ a \emph{Residual
 Audio Injection Bypass} module positioned \emph{after} the backbone's $D=12$
-Mamba-2 layers and \emph{before} the final linear projection: %
-
-\subsection{Architecture: Cross-Attention After Backbone}
-
-Instead of embedding audio in the main sequence, we employ a \emph{Residual
-Audio Injection Bypass} module positioned \emph{after} the backbone's $D=12$
 Mamba-2 layers and \emph{before} the final linear projection:
 
 \begin{equation}\label{eq:audio-bypass}
@@ -585,10 +577,6 @@ allowing the backbone to first converge on geometry and identity before audio
 lip-sync gradients are introduced.
 
 Crucially, because this cross-attention operation only computes affinities between the 16 target spatial tokens (Queries) and the localized audio sequence (Keys/Values), it explicitly avoids a global $\mathcal{O}(L^2)$ computation over the entire 304-token context window. This architectural bypass ensures the primary temporal backbone remains strictly bounded to linear $\mathcal{O}(L)$ complexity.
-
-
-
-
 
 \subsection{Audio Embedding}
 
@@ -672,7 +660,7 @@ itself~\eqref{eq:frozen-mamba} is treated as a fixed feature extractor. %
 This regime leverages pre-trained Mamba-2 weights (from a prior geometry-only
 phase) as a \emph{frozen temporal feature extractor}, while the AdaLN layers
 learn to inject timestep-appropriate conditioning into the representation
-\emph{before} and \emph{after} the scan. The MLP retains full trainability,
+\emph{before} and \emph{after} the scan. Crucially, this decoupling sets the architectural foundation for subsequent knowledge transfer from a pretrained video model, ensuring the recurrent states can be mapped to stable global attention features without destroying their inductive biases. The MLP retains full trainability,
 providing the model with sufficient capacity to adapt the frozen scan features
 to the denoising objective. %
 
@@ -758,7 +746,7 @@ All experiments, including the multi-phase ablation studies and distillation rou
 \section{The Core Challenge: Source Identity Bleed}
 The primary objective of the digital avatar architecture is to synthesize the visual identity of a target avatar while being driven by the motion latents of a source user. Because the Mamba-2 backbone processes both streams simultaneously in a causal 1D scan, it must learn to disentangle the dynamic motion variables (facial expressions, pose, lip movements) from the static geometric variables (bone structure, skin tone, facial proportions). 
 
-During initial autoregressive rollouts, we identified a profound failure mode which we termed \textit{Attractor Overload}. Deprived of explicit structural guidance, the selective scan mechanism defaulted to the most dominant continuous signal in the context window: the driver. As the temporal rollout deepened, the generated target avatar steadily morphed into the underlying bone structure of the driving user. The model was effectively taking a ``lazy shortcut,'' copying the driver's static geometry rather than holding the pristine target avatar identity in its finite hidden state.
+During initial autoregressive rollouts, we identified a profound failure mode which we termed \textit{Attractor Overload}, the primary driver behind the identity-stability problem. Deprived of explicit structural guidance, the selective scan mechanism defaulted to the most dominant continuous signal in the context window: the driver. As the temporal rollout deepened, the generated target avatar steadily morphed into the underlying bone structure of the driving user. The model was effectively taking a ``lazy shortcut,'' copying the driver's static geometry rather than holding the pristine target avatar identity in its finite hidden state.
 
 \begin{figure}[H]
     \centering
@@ -818,7 +806,7 @@ To rigorously measure this manifold collapse and track the efficacy of our inter
 Our baseline evaluation of the unmitigated autoregressive model yielded a catastrophic 93.00\% identity leakage rate, confirming that the continuous causal scan was systematically discarding the target identity in favor of the driving motion's underlying geometry.
 
 \section{Intervention I: Rank-1 Null-Space Projection}
-To eradicate the geometric bias of the source driver, we designed a mathematical intervention directly at the latent tensor level: Rank-1 Null-Space Projection. The hypothesis was that if we could compute the exact vector space representing the static identity of the driver, we could mathematically blind the Mamba-2 backbone to that specific geometry, forcing the network to operate strictly in the subspace of pure dynamic motion.
+To eradicate the geometric bias of the source driver and better separate who the avatar is from how it moves, we designed a mathematical intervention directly at the latent tensor level: an explicit feature-space projection known as Rank-1 Null-Space Projection. The hypothesis was that if we could compute the exact vector space representing the static identity of the driver, we could mathematically blind the Mamba-2 backbone to that specific geometry, forcing the network to operate strictly in the subspace of pure dynamic motion.
 
 The eradication of this static spatial bias was executed in three computational steps:
 \begin{enumerate}
@@ -832,7 +820,7 @@ This operation effectively sliced the static identity out of the source signal. 
 \section{Intervention II: Transformer-to-Mamba Feature Distillation (T2MD)}
 While the Null-Space Projection removed the driver's geometric bias, the model still faced the inherent \textit{exposure bias} of pure autoregressive generation. Without teacher-forced ground truth frames to correct the trajectory, minor out-of-distribution (OOD) errors compounded rapidly, causing the avatar's geometry to drift over extended horizons.
 
-To ensure structural integrity, we implemented Transformer-to-Mamba Feature Distillation (T2MD). Drawing on principles from the DiMSUM \cite{phung2024dimsum} and StateSpaceDiffuser \cite{statespacediffuser2025} frameworks, we utilized a pre-trained, frozen multi-head self-attention DiT as a ``Teacher'' network. 
+To ensure structural integrity and prevent identity drift from reappearing during fully autoregressive generation, we utilized knowledge transfer from a pretrained video model. Specifically, we implemented Transformer-to-Mamba Feature Distillation (T2MD). Drawing on principles from the DiMSUM \cite{phung2024dimsum} and StateSpaceDiffuser \cite{statespacediffuser2025} frameworks, we utilized a pre-trained, frozen multi-head self-attention DiT as a ``Teacher'' network. 
 
 During Phase 4 training, we hooked the output representations of the \texttt{DiTMambaBlock} layers. We computed a direct layer-level Mean Squared Error (MSE) loss between the spatial representations of the frozen DiT Teacher and the trainable Mamba-2 Student. Because the student and teacher dimensions matched perfectly, this explicit feature mapping prevented the Mamba-2 scan from discarding high-frequency spatial details. By constraining the state-space hidden states to mirror the stable, global attention maps of the DiT, we mathematically locked down the visual features against contextual drift.
 
@@ -881,7 +869,7 @@ Across both evaluation modes, VAE reconstruction diagnostics verified a sufficie
 
 \chapter{Challenges in Audio-Visual Alignment: Future Work}
 
-The interventions detailed in Chapter 4 successfully stabilized the visual manifold, completely eradicating geometric bias during purely motion-driven autoregressive rollouts. However, the ultimate objective of a continuous digital avatar architecture is true multimodal synthesis: driving facial geometry not just with spatial motion deltas, but with high-fidelity speech. Integrating complex audio signals into a state-space sequence mixer introduces profound architectural vulnerabilities. This chapter formalizes the integration of a high-bandwidth EnCodec audio stream, documents the resulting catastrophic disruptions to the Mamba-2 spatial memory, and proposes definitive architectural interventions for future multimodal research.
+The interventions detailed in Chapter 4 successfully stabilized the visual manifold, completely eradicating geometric bias during purely motion-driven autoregressive rollouts. However, the ultimate objective of a continuous digital avatar architecture is true multimodal synthesis: driving facial geometry not just with spatial motion deltas, but with high-fidelity speech, highlighting an additional challenge for speech-driven avatars. Integrating complex audio signals into a state-space sequence mixer introduces profound architectural vulnerabilities. This chapter formalizes the integration of a high-bandwidth EnCodec audio stream, documents the resulting catastrophic disruptions to the Mamba-2 spatial memory, and proposes definitive architectural interventions for future multimodal research.
 
 \section{The Multimodal Goal: High-Fidelity Audio Conditioning}
 To achieve realistic, audio-driven lip synchronization, our architecture utilized an EnCodec audio stream. Unlike lower-fidelity acoustic features (such as Mel-frequency cepstral coefficients), the chosen EnCodec pipeline operates at 24 kbps and outputs a dense 32-codebook discrete representation. This provides immense acoustic detail, capturing micro-expressions, breath noises, and nuanced speech cadences. 
@@ -891,7 +879,7 @@ During Phase 4 of our training protocol, we expanded the Diffusion Transformer's
 \section{High-Variance Memory Flushing}
 Upon initial integration of the 32-codebook audio embeddings into the prefill context window, the model suffered a complete structural collapse, failing to generate coherent geometry. 
 
-The root cause of this failure lies in the fundamental mechanics of the continuous selective scan. The Mamba-2 Structured State Space Duality (SSD) hidden state operates with a strict finite capacity (e.g., $d_{state} = 64$). When the sequence mixer encountered the EnCodec tokens, the extreme high-variance nature of the 32 unmasked embedding streams acted as global noise. This high-entropy signal effectively flushed the SSD's spatial memory. 
+The root cause of this failure lies in the fundamental mechanics of the continuous selective scan. The Mamba-2 Structured State Space Duality (SSD) hidden state operates with a strict finite capacity (e.g., $d_{state} = 64$). When the sequence mixer encountered the EnCodec tokens, the extreme high-variance nature of the 32 unmasked embedding streams acted as global noise. This high-entropy signal effectively flushed the SSD's spatial memory, demonstrating that incorporating dense audio representations can severely disrupt the model's visual memory. 
 
 Overwhelmed by the dense acoustic data, the state-space model ``forgot'' the pristine visual geometry of the target avatar anchored at the end of the context window. Deprived of its geometric anchor, the model defaulted to its strongest learned attractor under autoregressive uncertainty, temporarily resurrecting the geometric leakage of the source driver. To isolate the visual pathways and complete the visual ablation studies in Chapter 4, we were forced to implement a temporary $p_{audio} = 1.0$ tensor-level silence mask, muting the variance while preserving the sequence length $L$. Solving this memory flushing remains a critical frontier for SSMs.
 
@@ -927,9 +915,9 @@ While these multimodal challenges are non-trivial, the successful stabilization 
 The synthesis of continuous, infinite-horizon video remains one of the most mathematically and computationally demanding challenges in generative artificial intelligence. This thesis addressed the fundamental constraints of deep autoregressive video generation by proposing and validating a highly optimized Mamba-2 DiT hybrid architecture. By replacing quadratic $O(L^2)$ global self-attention with a linear $O(L)$ Structured State Space Duality (SSD) sequence mixer, we achieved a computationally feasible pathway for high-framerate digital avatar generation. 
 
 \section{Summary of Contributions}
-The integration of causal sequence mixers into visual diffusion paradigms introduces profound inductive biases that inherently destabilize the latent manifold. Our primary contribution lies in the mathematical and architectural interventions designed to heal this manifold and prevent \textit{Conditioning Collapse}. 
+The integration of causal sequence mixers into visual diffusion paradigms introduces profound inductive biases that inherently destabilize the latent manifold. Our experiments revealed that continuous generation introduces a fundamental identity-stability problem, frequently resulting in severe source identity leakage. Our primary contribution lies in the mathematical and architectural interventions designed to heal this manifold and better separate who the avatar is from how it moves.
 
-We introduced the \textit{Anchor-Last} paradigm, a novel prefill context structure that systematically positions uncorrupted target identity tokens at the absolute end of the continuous scan, maximizing state-space grounding against diffusion noise. Furthermore, we isolated and resolved a severe geometric bias which originally caused a 93\% identity leakage rate during continuous rollouts. By executing a Rank-1 Null-Space Projection, we mathematically blinded the Mamba-2 backbone to the source driver's static spatial attractors. Combined with our layer-level Transformer-to-Mamba Feature Distillation (T2MD) objective, we successfully locked the visual manifold. During teacher-forced ablation studies, the model completely eradicated geometric drift, achieving a 0.00\% identity leakage rate. Furthermore, we documented the specific bounds of this stability, tracking the re-emergence of exposure bias during pure autoregressive inference.
+To achieve this, we introduced explicit identity anchoring via the \textit{Anchor-Last} paradigm, a novel prefill context structure that systematically positions uncorrupted target identity tokens at the absolute end of the continuous scan, maximizing state-space grounding against diffusion noise. Furthermore, we utilized feature-space projections (Rank-1 Null-Space Projection) to mathematically blind the Mamba-2 backbone to the source driver's static spatial attractors. Combined with knowledge transfer from a pretrained video model via our layer-level Transformer-to-Mamba Feature Distillation (T2MD) objective, we successfully locked the visual manifold. During teacher-forced ablation studies, these methods completely eradicated observed identity leakage, reducing it from 93\% to 0.00\%. Finally, we documented the specific bounds of this stability, tracking the re-emergence of identity drift as small visual errors accumulated during pure autoregressive inference.
 
 \section{Final Remarks}
 While this work proves that Mamba-2 SSD sequence mixers can sustain highly rigid, photorealistic geometric consistency over extended horizons, it also formally identifies the next critical barrier in state-space research: multimodal high-variance integration. 
