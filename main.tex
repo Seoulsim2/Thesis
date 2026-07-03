@@ -287,8 +287,11 @@ In the canonical Diffusion Transformer (DiT) \cite{peebles2023scalable}, each ba
 
 The Mamba-2 Structured State-Space Duality (SSD) layer \cite{dao2024transformers} provides a linear-time alternative: a selective scan over the input sequence with $\mathcal{O}(L)$ time and $\mathcal{O}(1)$ recurrent state per token. We therefore replace the multi-head self-attention mixer in each of the 12 backbone DiT blocks with a Mamba-2 SSD block (\texttt{model\_mode = 'mamba'} in our implementation), while preserving the Adaptive Layer Normalization with Zero-initialization (AdaLN-Zero) conditioning stack surrounding each block.
 
-Concretely, each \texttt{DiTMambaBlock} computes six AdaLN-Zero modulation parameters,
-(\texttt{shift\_msa}, \texttt{scale\_msa}, \texttt{gate\_msa}, \texttt{shift\_mlp}, \texttt{scale\_mlp}, \texttt{gate\_mlp}) from the diffusion timestep embedding via a zero-initialized SiLU-Linear head. It applies them to the pre-normalized input before and after the Mamba-2 mixer and the subsequent MLP respectively, and adds gated residual connections---identical in structure to the original DiTBlock except that \texttt{nn.MultiheadAttention} is replaced by \texttt{mamba\_ssm.Mamba2}.
+Concretely, each \texttt{DiTMambaBlock} computes six AdaLN-Zero modulation parameters:
+
+(\texttt{shift\_msa}, \texttt{scale\_msa}, \texttt{gate\_msa}, \texttt{shift\_mlp}, \texttt{scale\_mlp}, \texttt{gate\_mlp}),
+
+\noindent from the diffusion timestep embedding via a zero-initialized SiLU-Linear head. It applies them to the pre-normalized input before and after the Mamba-2 mixer and the subsequent MLP respectively, and adds gated residual connections---identical in structure to the original DiTBlock except that \texttt{nn.MultiheadAttention} is replaced by \texttt{mamba\_ssm.Mamba2}.
 
 Because the token sequence interleaves multiple streams (user visual, avatar visual, anchor, and target) each representing a $4 \times 4$ spatial patch grid, a naive 1D causal scan would discard vertical spatial locality within each frame. We therefore wrap the Mamba-2 layer in a Sweep-4 cross-scan: for each frame's contiguous $h \times w$ token block, four directional Mamba passes are run (row-major forward, row-major reverse, column-major forward, column-major reverse) and their outputs are summed before re-insertion into the sequence. This batch-concatenation strategy maximizes kernel utilization by processing all four sweeps in a single Mamba forward call.
 
@@ -876,8 +879,9 @@ Autoregressive stability also depends on the training curriculum. Phase 3.5 comb
 
 Table~\ref{tab:results_leakage} summarizes the main leakage and swap-score results. The table should be read by evaluation mode: teacher forcing measures whether the model can separate identity from motion under clean context, while autoregressive rollout measures whether that separation survives self-conditioning.
 
-\begin{table}[H]
+\begin{table}[!t]
 \centering
+\footnotesize
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{@{}llcc@{}}
 \toprule
