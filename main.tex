@@ -265,15 +265,41 @@ The recurrent diffusion model operates on these latents using a context length o
 
 All experiments are conducted on the Narval and Mist HPC clusters using NVIDIA H100 80 GB SXM5 accelerators. Optimization uses AdamW~\cite{loshchilov2019decoupled} with base learning rate $1.5 \times 10^{-4}$, and training is run in \texttt{bf16-mixed} precision to match the Mamba-2 fused kernel execution path. Unless otherwise stated, visual results are reported at 15 fps in latent space after VAE decoding.
 
+\section{Development Stages and Training Protocol}
+
+The final architecture emerged through a sequence of increasingly realistic checks. These stages are important because several apparent model failures were only visible under autoregressive rollout, not under teacher-forced next-frame prediction.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{0.22\textwidth}p{0.33\textwidth}p{0.34\textwidth}@{}}
+\toprule
+\textbf{Stage} & \textbf{Purpose} & \textbf{Outcome} \\
+\midrule
+Autoencoder adaptation & Initialize from the LDM \texttt{kl-f16} checkpoint and fine-tune on cropped Seamless face videos. & Verified that the face crops can be reconstructed in latent space before training the temporal model. \\
+Toy and small-subset overfit & Train on tiny clips and synthetic square-motion videos to verify capacity and catch data-pipeline bugs. & Confirmed that the model can memorize short controlled dynamics when the data pipeline is correct. \\
+DiT next-frame baseline & Predict each target-avatar frame from source-user context and avatar history. & Teacher-forced predictions can look plausible, but autoregressive rollout exposes compounding errors. \\
+Context robustness curriculum & Add context dropout, variable truncation, blur/noise corruption, and classifier-free guidance. & Improves robustness to imperfect histories but does not fully eliminate identity drift. \\
+Anchor/reference stream & Keep a clean target-avatar reference in the context window. & Reduces late-frame drift by forcing a persistent target-identity signal. \\
+Mamba-2 hybrid & Replace the attention mixer with a Mamba-2 SSD mixer while preserving DiT-style conditioning. & Provides a long-context recurrent backbone for continuous generation. \\
+Audio attempt & Add EnCodec tokens through an audio conditioning path. & Reveals high-variance audio interference, motivating the future-work analysis in Chapter~\ref{ch:audio}. \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{Development Stages.} Summary of the experimental progression from autoencoder adaptation to the final recurrent Mamba-2 DiT hybrid.}
+\label{tab:training_stages}
+\end{table}
+
+For evaluation, we distinguish next-frame teacher forcing from fully autoregressive rollout. In teacher forcing, all previous avatar frames are ground truth. In autoregressive rollout, generated avatar frames are decoded, re-encoded, and fed back into the model as future context. The latter setting is the more realistic test of continuous interaction because prediction errors become part of the model's own input history.
+
 \section{Failure Mode: Source Identity Bleed}
 
-The baseline model reveals a failure mode specific to continuous avatar generation. During autoregressive rollouts, the generated target avatar gradually moves toward the source user's facial structure. The model appears to copy the driver's static geometry because that geometry is a strong and repeatedly observed signal in the context window. We call this failure \textit{source identity bleed} or \textit{Attractor Overload}.
+The baseline model reveals a failure mode specific to continuous avatar generation. During autoregressive rollouts, the generated target avatar gradually moves toward the source user's facial structure. The model appears to copy the driver's static geometry because that geometry is a strong and repeatedly observed signal in the context window. We call this failure \textit{source identity bleed}.
 
 This behavior clarifies the thesis problem. The recurrent backbone is not merely forgetting pixels; it is confusing two semantic roles in the context. The source stream should be used for motion, but it also contains identity. The target stream should define identity, but its information must survive finite state-space memory and diffusion noise. The rest of the thesis studies how to make that separation reliable.
 
 \section{Quantitative Diagnostics}
 
-To measure identity bleed, we compute latent-space similarities between the generated target latent, the source user's latent, and the target avatar anchor. Let $\mathbf{z}_t$ be the generated target latent at timestep $t$, $\mathbf{u}_t$ be the source user's driving latent, and $\mathbf{a}$ be the target avatar anchor.
+To measure identity bleed, we compute latent-space similarities between the generated target latent, the source user's latent, and the target avatar anchor. Let $\mathbf{z}_t$ be the fully denoised and VAE-decoded-then-re-encoded generated target latent at video frame $t$, $\mathbf{u}_t$ be the source user's driving latent at the same frame, and $\mathbf{a}$ be the clean target avatar anchor. All three tensors are flattened from $16 \times 16 \times 16$ latent tensors into 4096-dimensional vectors before cosine similarity is computed.
 
 The first diagnostic is the user-leakage rate:
 \begin{equation}
@@ -286,6 +312,8 @@ The second diagnostic is the mean swap score:
     \text{Swap Score} = \frac{1}{T} \sum_{t=1}^{T} \Big( \cos(\mathbf{z}_t, \mathbf{u}_t) - \cos(\mathbf{z}_t, \mathbf{a}) \Big).
 \end{equation}
 A positive swap score indicates source-user attraction, while a negative score indicates target-avatar anchoring.
+
+These metrics are diagnostics rather than a complete identity evaluation. VAE latents can entangle identity with expression, pose, illumination, and reconstruction artifacts, so a high source cosine may partly reflect successful motion transfer rather than only identity leakage. We therefore interpret the leakage rate together with visual rollouts and teacher-forced comparisons.
 
 \section{Baseline Result}
 
@@ -318,7 +346,7 @@ The sections below introduce the architectural components in this order: the Mam
 
 \subsection{Replacing Self-Attention with Mamba-2 SSD}
 
-In the canonical Diffusion Transformer (DiT) \cite{peebles2023scalable}, each backbone block applies multi-head self-attention to the full token sequence. For autoregressive avatar generation, the context window at inference time comprises $T = 7$ user frames, $T = 7$ avatar history frames, an identity anchor derived from the oldest avatar frame, and the noisy denoising target---yielding a sequence that grows linearly with temporal depth. Since self-attention is $\mathcal{O}(L^2)$ in sequence length $L$, it becomes the throughput bottleneck as the context grows.
+In the canonical Diffusion Transformer (DiT) \cite{peebles2023scalable}, each backbone block applies multi-head self-attention to the full token sequence. For autoregressive avatar generation, the context window at inference time comprises $T = 7$ user frames, $T = 7$ avatar history frames, a clean target-avatar identity anchor, and the noisy denoising target. The sequence length is fixed at $L=304$ for the experiments in this thesis, but it would grow with longer context windows or higher-resolution latents. Since self-attention is $\mathcal{O}(L^2)$ in sequence length $L$, it becomes the throughput bottleneck as the context grows.
 
 The Mamba-2 Structured State-Space Duality (SSD) layer \cite{dao2024transformers} provides a linear-time alternative: a selective scan over the input sequence with $\mathcal{O}(L)$ time and $\mathcal{O}(1)$ recurrent state per token. We therefore replace the multi-head self-attention mixer in each of the 12 backbone DiT blocks with a Mamba-2 SSD block (\texttt{model\_mode = 'mamba'} in our implementation), while preserving the Adaptive Layer Normalization with Zero-initialization (AdaLN-Zero) conditioning stack surrounding each block.
 
@@ -328,7 +356,7 @@ Concretely, each \texttt{DiTMambaBlock} computes six AdaLN-Zero modulation param
 
 \noindent from the diffusion timestep embedding via a zero-initialized SiLU-Linear head. It applies them to the pre-normalized input before and after the Mamba-2 mixer and the subsequent MLP respectively, and adds gated residual connections---identical in structure to the original DiTBlock except that \texttt{nn.MultiheadAttention}~\cite{vaswani2017attention} is replaced by \texttt{mamba\_ssm.Mamba2}.
 
-Because the token sequence interleaves multiple streams (user visual, avatar visual, anchor, and target) each representing a $4 \times 4$ spatial patch grid, a naive 1D causal scan would discard vertical spatial locality within each frame. We therefore wrap the Mamba-2 layer in a Sweep-4 cross-scan: for each frame's contiguous $h \times w$ token block, four directional Mamba passes are run (row-major forward, row-major reverse, column-major forward, column-major reverse) and their outputs are summed before re-insertion into the sequence. This batch-concatenation strategy maximizes kernel utilization by processing all four sweeps in a single Mamba forward call.
+Because the token sequence interleaves multiple streams (user visual, avatar visual, anchor, and target) each representing a $4 \times 4$ spatial patch grid, a naive 1D causal scan would discard vertical spatial locality within each frame. We therefore wrap the Mamba-2 layer in a Sweep-4 cross-scan: for each frame's contiguous $h \times w$ token block, four directional Mamba passes are run (row-major forward, row-major reverse, column-major forward, column-major reverse) and their outputs are summed before re-insertion into the sequence. This is non-causal only within a single spatial frame; temporal ordering across frames remains causal. The batch-concatenation strategy maximizes kernel utilization by processing all four sweeps in a single Mamba forward call.
 
 The model is implemented with \texttt{hidden\_size = 384}, \texttt{mamba\_expand = 2}, \texttt{mamba\_d\_state = 64}, \texttt{mamba\_d\_conv = 4}, and \texttt{mamba\_headdim = 48}. The \texttt{headdim} choice is constrained by the \texttt{causal\_conv1d} kernel's stride-alignment requirement: the number of groups $\texttt{ngroups} = (\texttt{hidden\_size} \times \texttt{mamba\_expand}) / \texttt{mamba\_headdim}$ must be divisible by 8. With \texttt{mamba\_headdim = 48}, $\texttt{ngroups} = 16$, satisfying this constraint; the default \texttt{headdim = 64} yields $\text{ngroups} = 12$ and is rejected at model initialization. Mamba-2 weights are held in \texttt{bfloat16}, matching the \texttt{bf16-mixed} training precision of the H100, and the implementation relies on the hardware-accelerated fused SSD and \texttt{causal\_conv1d} CUDA kernels provided by the \texttt{mamba\_ssm} package, which map the selective scan computation onto the Tensor Core pipeline.
 
@@ -439,10 +467,12 @@ requirements of the \texttt{causal\_conv1d} CUDA kernel: %
 \texttt{d\_conv}     & 4    & Short (causal) 1D convolution width \\
 \texttt{expand}      & 2    & Expansion factor $\rightarrow d_{\mathrm{inner}} = 2 \times 384 = 768$ \\
 \texttt{headdim}     & 48   & Per-head dimension $\rightarrow$ \texttt{ngroups} $= 768/48 = 16$ \\
-\texttt{rmsnorm}     & True & Pre-output RMS normalisation (H100-optimised) \\
+\texttt{rmsnorm}     & True & Pre-output RMS normalization (H100-optimized) \\
 \texttt{dtype}       & bf16 & Native kernel precision \\
 \bottomrule
 \end{tabular}
+\caption{\textbf{Mamba-2 Hyperparameters.} Backbone configuration used in the recurrent avatar model.}
+\label{tab:mamba_hyperparameters}
 \end{table}
 
 \paragraph{The \texttt{ngroups} divisibility constraint.}
@@ -585,11 +615,11 @@ target identity. %
 
         % Top Bracket (Grounding Emphasis)
         \draw[thick, decorate, decoration={brace, amplitude=8pt}]
-            (anchor.north west) -- (anchor.north east) node[midway, above=12pt] {\textbf{Max SSM Grounding}};
+            (anchor.north west) -- (anchor.north east) node[midway, above=12pt] {\textbf{Immediate Identity Context}};
 
     \end{tikzpicture}
     \vspace{0.2cm}
-    \caption{\textbf{The Anchor-Last Context Window Configuration.} To counteract the inherent forgetting curve of the continuous Mamba-2 selective scan, the bipartite context stream is strictly ordered. By placing the uncorrupted target geometry immediately prior to the noisy diffusion target, the state-space model's spatial memory is maximally grounded.}
+    \caption{\textbf{The Anchor-Last Context Window Configuration.} The clean target-avatar anchor is placed immediately before the noisy diffusion target so the recurrent state receives target-identity information immediately before denoising.}
     \label{fig:anchor_last}
 \end{figure}
 
@@ -667,7 +697,7 @@ where $\mathbf{c}$ denotes the full context and $\varnothing$ denotes the
 zeroed (unconditional) context. We use $w = 2.5$ at inference. %
 
 % ---------------------------------------------------------------------------
-\section{State-Space Decoupling: Curing Conditioning Collapse}\label{sec:decoupling}
+\section{State-Space Decoupling: Mitigating Conditioning Collapse}\label{sec:decoupling}
 % ---------------------------------------------------------------------------
 
 \subsection{The Conditioning Collapse Failure Mode}
@@ -766,6 +796,8 @@ Throughput                & $\sim$13--15 steps/s$^{-1}$  & Effective training sp
 Parameters (backbone)     & $\sim$12.4\,M    & 12 DiTMambaBlock layers \\
 \bottomrule
 \end{tabular}
+\caption{\textbf{Training Throughput.} Single-GPU training throughput for the 304-token anchor-last sequence on an H100 GPU.}
+\label{tab:throughput}
 \end{table}
 
 \subsection{Complexity Comparison}
@@ -776,12 +808,7 @@ For sequence length $L = 304$:
     \item \textbf{Mamba-2 SSD:} $\mathcal{O}(L \cdot d_{\mathrm{inner}} \cdot d_{\mathrm{state}}) = \mathcal{O}(304 \times 768 \times 64) \approx 14.9\,\text{M FLOPs/layer}$
 \end{itemize}
 
-The Mamba-2 mixer provides a $2.4\times$ theoretical FLOP reduction per layer.
-Combined with the hardware-aware fused kernel (which avoids materializing the
-full $L \times L$ attention matrix in HBM), practical wall-clock savings are
-approximately $1.8\times$ at this sequence length. The advantage grows
-quadratically as context is extended (e.g., $T > 7$ or higher-resolution
-latents). %
+For a single causal scan, the Mamba-2 mixer provides a $2.4\times$ theoretical FLOP reduction per layer. The Sweep-4 spatial wrapper performs four directional scans per spatial frame, so the raw FLOP count of the spatial mixer is higher than the single-scan estimate. In practice, however, the four sweeps are batch-concatenated and executed by fused kernels, avoiding materialization of a full $L \times L$ attention matrix in HBM. We therefore treat the FLOP comparison as a single-scan reference point and report measured throughput separately in Table~\ref{tab:throughput}. The memory advantage of the recurrent state grows as context windows or latent resolution increase. %
 
 \subsection{Inference: Recurrent State Handoff}
 
@@ -800,7 +827,7 @@ horizon. %
 \section{Residual Audio Injection Bypass}\label{sec:audio-bypass}
 % ---------------------------------------------------------------------------
 
-The visual architecture above is the main object evaluated in Chapters~\ref{ch:task} and~\ref{ch:visual-results}. Audio conditioning is treated as an extension point because the full avatar goal requires speech-driven motion, but naive insertion of dense audio tokens can damage the visual state. The bypass below is therefore designed to keep audio outside the main Mamba scan.
+The visual architecture above is the main object evaluated in Chapters~\ref{ch:task} and~\ref{ch:visual-results}. Audio conditioning is treated as an extension point because the full avatar goal requires speech-driven motion, but naive insertion of dense audio tokens can damage the visual state. The bypass below was introduced as a design response to the audio failures discussed in Chapter~\ref{ch:audio}; it should be read as architectural preparation for future multimodal work rather than as a solved audio-conditioning result.
 
 \subsection{Design Rationale}
 
@@ -844,18 +871,18 @@ Audio is represented as quantized EnCodec tokens with $n_{\mathrm{cb}} = 32$ cod
 Here $t$ is the frame index, $c$ is the codebook index, $k \in \{1, \ldots, 5\}$ is the sub-frame position, and $\mathbf{p}_{\mathrm{sub}}^{(k)}$ is a learned sub-frame positional embedding.
 
 
-\chapter{Visual Manifold Stabilization and Results}\label{ch:visual-results}
+\chapter{Visual Stabilization and Results}\label{ch:visual-results}
 
-The previous chapters defined the avatar task, showed the baseline identity-leakage failure, and introduced the recurrent architecture. This chapter presents the interventions used to stabilize the visual manifold and the results that reveal the boundary of the approach. The central finding is that identity and motion can be separated under clean teacher-forced context, but autoregressive self-conditioning remains the main source of long-horizon drift.
+The previous chapters defined the avatar task, showed the baseline identity-leakage failure, and introduced the recurrent architecture. This chapter presents the interventions used to stabilize target identity and the results that reveal the boundary of the approach. The central finding is that identity and motion can be separated under clean teacher-forced context, but autoregressive self-conditioning remains the main source of long-horizon drift.
 
 \section{Baseline: Unmitigated Mamba-2 DiT}
 
-The unmitigated Mamba-2 DiT baseline is computationally viable, but it does not preserve target identity during autoregressive rollout. As reported in Chapter~\ref{ch:task}, the baseline reaches 93.00\% identity leakage and a mean swap score of $+0.342$. Qualitatively, the avatar's generated geometry moves toward the source driver's facial structure, showing that the recurrent state has learned an unintended shortcut: use the driver not only for motion, but also for identity.
+The unmitigated Mamba-2 DiT baseline is computationally viable, but it does not preserve target identity during autoregressive rollout. As reported in Chapter~\ref{ch:task}, the baseline reaches 93.00\% identity leakage and a mean swap score of $+0.342$ under autoregressive evaluation. Qualitatively, the avatar's generated geometry moves toward the source driver's facial structure, showing that the recurrent state has learned an unintended shortcut: use the driver not only for motion, but also for identity. Figure~\ref{fig:identity_bleed} illustrates this failure mode.
 
 \begin{figure}[H]
     \centering
     \maybeincludegraphics[width=0.85\textwidth]{identity_bleed.png}
-    \caption{\textbf{Visualizing Source Identity Bleed.} Comparison of generation outputs demonstrating the model's regression to the dominant static attractor (the driver) prior to manifold healing.}
+    \caption{\textbf{Visualizing Source Identity Bleed.} Comparison of generation outputs showing the model's regression toward the driver before stabilization interventions.}
     \label{fig:identity_bleed}
 \end{figure}
 
@@ -910,9 +937,16 @@ The null-space projection addresses source identity bias, but the recurrent stud
 
 Autoregressive stability also depends on the training curriculum. Phase 3.5 combines classifier-free guidance with context-noise corruption so that the model sees histories closer to the imperfect context it will encounter at inference time. This curriculum is not sufficient to eliminate drift, but it reduces leakage on primary cross-identity pairs and exposes how sensitive the method remains to identity distance.
 
+\begin{figure}[H]
+    \centering
+    \maybeincludegraphics[width=0.95\textwidth]{noise_comparison_stills.png}
+    \caption{\textbf{Context-Robustness Rollout Stills.} Representative frames from supplementary rollouts comparing generation without and with context-noise training. The stills are extracted from MP4 rollouts and are used qualitatively to inspect how prediction errors evolve over time.}
+    \label{fig:noise_rollout_stills}
+\end{figure}
+
 \section{Results}
 
-Table~\ref{tab:results_leakage} summarizes the main leakage and swap-score results. The table should be read by evaluation mode: teacher forcing measures whether the model can separate identity from motion under clean context, while autoregressive rollout measures whether that separation survives self-conditioning.
+Table~\ref{tab:results_leakage} summarizes the main leakage and swap-score results. The table should be read by evaluation mode: teacher forcing measures whether the model can separate identity from motion under clean context, while autoregressive rollout measures whether that separation survives self-conditioning. The rows are therefore a diagnostic comparison across evaluation modes, not a complete factorial ablation.
 
 \begin{table}[!t]
 \centering
@@ -926,24 +960,38 @@ Rank-1 Null + T2MD & Ground-Truth Teacher Forcing & \textbf{0.00\%} & \textbf{-0
 Phase 3.5 (CFG + Noise) & Autoregressive (Primary Pair) & 29.40\% & +0.094 \\
 Phase 3.5 (CFG + Noise) & Autoregressive (Disparate Pair) & 71.30\% & +0.211 \\ \bottomrule
 \end{tabular}
-\caption{\textbf{Quantitative Ablation of Manifold Healing Interventions.} Leakage rates (\texttt{fraction\_frames\_pred\_closer\_to\_user}) and swap scores demonstrating the eradication of geometric bias under teacher forcing, juxtaposed with the re-emergence of exposure bias during deep autoregressive inference.}
+\caption{\textbf{Identity-Stability Diagnostics.} Leakage rates (\texttt{fraction\_frames\_pred\_closer\_to\_user}) and swap scores under teacher-forced and autoregressive evaluation. The 0.00\% row measures clean-context spatial disentanglement; the autoregressive rows measure whether that separation survives self-conditioning.}
 \label{tab:results_leakage}
 \end{table}
 
 \subsection{Spatial Validation (Teacher Forcing)}
 
-Under teacher forcing, Rank-1 Null-Space Projection and T2MD reduce identity leakage to 0.00\% and produce a negative mean swap score of $-0.185$. This is the strongest positive result of the thesis: when the historical context is clean, the architecture can represent target identity separately from source motion. The result also shows that the VAE latent space contains enough identity separation for the task; the main challenge is how the recurrent generator uses that space.
+Under teacher forcing, Rank-1 Null-Space Projection and T2MD reduce observed identity leakage to 0.00\% and produce a negative mean swap score of $-0.185$ on the evaluated cross-identity pairs. This is the strongest positive result of the thesis: when the historical context is clean, the architecture can represent target identity separately from source motion under the latent-space diagnostics. Figure~\ref{fig:teacher_forced_prediction} shows a representative teacher-forced prediction. The result also shows that the VAE latent space contains enough identity separation for the task; the main challenge is how the recurrent generator uses that space.
+
+\begin{figure}[H]
+    \centering
+    \maybeincludegraphics[width=0.85\textwidth]{comparison_00005.png}
+    \caption{\textbf{Teacher-Forced Prediction Example.} Given source-user motion and clean target-avatar context, the model predicts the target-avatar frame while preserving target identity under teacher forcing.}
+    \label{fig:teacher_forced_prediction}
+\end{figure}
 
 \subsection{Temporal Drift (Autoregressive Rollout)}
 
-The harder setting is fully autoregressive rollout. When generated frames replace ground-truth history, small latent errors accumulate. Phase 3.5 reduces leakage to 29.40\% on the primary cross-identity pair, but leakage remains positive and rises to 71.30\% on a more disparate identity pair. This gap between teacher-forced and autoregressive evaluation isolates temporal self-conditioning as the remaining bottleneck.
+The harder setting is fully autoregressive rollout. When generated frames replace ground-truth history, small latent errors accumulate. Phase 3.5 reduces leakage to 29.40\% on the primary cross-identity pair, but leakage remains positive and rises to 71.30\% on a more disparate identity pair. This gap between teacher-forced and autoregressive evaluation isolates temporal self-conditioning as the remaining bottleneck. Figure~\ref{fig:autoregressive_swap} shows a representative late-rollout identity swap.
+
+\begin{figure}[H]
+    \centering
+    \maybeincludegraphics[width=0.95\textwidth]{autoregressive_comparison_00010.png}
+    \caption{\textbf{Autoregressive Identity Drift Example.} Late in autoregressive rollout, the predicted previous avatar and predicted output can move toward the wrong identity even when the ground-truth target remains stable.}
+    \label{fig:autoregressive_swap}
+\end{figure}
 
 \subsection{Manifold Separation}
 
 \begin{figure}[H]
     \centering
     \maybeincludegraphics[width=0.85\textwidth]{latent_cosine_gap.png}
-    \caption{\textbf{Latent Forensics and Cosine Gap Analysis.} VAE reconstruction diagnostics verifying the mathematical separation between user and avatar identity variables within the normalized latent space.}
+    \caption{\textbf{Latent-Space Cosine Gap Analysis.} VAE reconstruction diagnostics showing separation between user and avatar identity variables within the normalized latent space.}
     \label{fig:latent_cosine_gap}
 \end{figure}
 
@@ -965,24 +1013,24 @@ We experimented with a high-bandwidth EnCodec representation~\cite{defossez2023h
 
 \section{Failure 1: High-Variance Memory Flushing}
 
-When the 32-codebook audio embeddings were introduced into the prefill context, the model lost coherent facial geometry. The likely cause is finite-state interference. The Mamba-2 SSD hidden state has limited capacity, and the unmasked audio embeddings presented a high-entropy signal that competed with the target identity anchor. Instead of adding localized speech information, the audio stream flushed useful visual memory from the recurrent state.
+When the 32-codebook audio embeddings were introduced into the prefill context, the model lost coherent facial geometry. The likely cause is finite-state interference. The Mamba-2 SSD hidden state has limited capacity, and the unmasked audio embeddings presented a high-entropy signal that competed with the target identity anchor. Instead of adding localized speech information, the audio stream displaced useful visual identity information from the recurrent state.
 
-This failure temporarily resurrected the same source-attractor behavior studied earlier in the thesis. Once target geometry was weakened, the model again became vulnerable to source identity bleed under autoregressive uncertainty. To isolate the visual experiments in Chapter~\ref{ch:visual-results}, the audio pathway was muted with a tensor-level silence mask, $p_{audio}=1.0$, while preserving sequence shape.
+This failure reintroduced the same source-attractor behavior studied earlier in the thesis. Once target geometry was weakened, the model again became vulnerable to source identity bleed under autoregressive uncertainty. To isolate the visual experiments in Chapter~\ref{ch:visual-results}, the audio pathway was muted with a tensor-level silence mask, $p_{audio}=1.0$, while preserving sequence shape.
 
 \section{Failure 2: Latent Spatial Smearing}
 
-The second failure mode was \textit{Latent Spatial Smearing}. Speech should primarily affect the mouth and jaw. Global audio conditioning, however, can distribute acoustic information across the entire $H \times W$ face latent. When audio modulates upper-face regions such as eyes, forehead, hair, and skull shape, it destabilizes exactly the identity features that the visual system is trying to preserve.
+The second failure mode was \textit{latent spatial smearing}. Speech should primarily affect the mouth and jaw. Global audio conditioning, however, can distribute acoustic information across the entire $H \times W$ face latent. When audio modulates upper-face regions such as eyes, forehead, hair, and skull shape, it destabilizes exactly the identity features that the visual system is trying to preserve.
 
 \begin{figure}[H]
     \centering
     \maybeincludegraphics[width=0.9\textwidth]{audio_smearing.png}
-    \caption{\textbf{Latent Spatial Smearing vs. Spatial Bounding Box Masking.} Contrasting the destructive global attention of high-variance audio embeddings against a proposed bounded mask restricted to the lower-face geometry.}
+    \caption{\textbf{Latent Spatial Smearing vs. Spatial Bounding Box Masking.} Contrasting ungated global audio conditioning against a proposed bounded mask restricted to lower-face geometry.}
     \label{fig:audio_smearing}
 \end{figure}
 
-\section{Failure 3: Stridal Desynchronization}
+\section{Failure 3: Frame-Rate Desynchronization}
 
-Temporal alignment across modalities introduced a separate data-pipeline problem. Visual frames were sampled at 15 fps, while EnCodec tokens were extracted from a 60 fps source video. A naive 1:1 indexing scheme therefore created a 1-in-4 phase error: the audio stream advanced four times faster than the visual stream. Over long windows, this \textit{Stridal Desynchronization} makes lip-sync supervision unreliable because the model is trained on misaligned speech and mouth motion.
+Temporal alignment across modalities introduced a separate data-pipeline problem. Visual frames were sampled at 15 fps, while EnCodec tokens were extracted from a 60 fps source video. A naive 1:1 indexing scheme therefore created a 1-in-4 phase error: the audio stream advanced four times faster than the visual stream. Over long windows, this frame-rate mismatch makes lip-sync supervision unreliable because the model is trained on misaligned speech and mouth motion.
 
 \section{Proposed Fixes}
 
@@ -996,7 +1044,7 @@ The audio failures suggest that future speech-conditioned recurrent avatars need
 
 \section{Boundary of This Thesis}
 
-The audio experiments should be read as a documented negative result. This thesis demonstrates progress on visual identity stabilization and identifies where that stabilization breaks under autoregressive and multimodal pressure. It does not claim to solve high-fidelity speech-driven avatar generation. Instead, the audio results define the next research problem: how to inject dense temporal speech information into a recurrent visual generator without flushing identity memory, smearing across the face, or misaligning audio and video time.
+The audio experiments should be read as a documented negative result. This thesis demonstrates progress on visual identity stabilization and identifies where that stabilization breaks under autoregressive and multimodal pressure. It does not claim to solve high-fidelity speech-driven avatar generation. Instead, the audio results define the next research problem: how to inject dense temporal speech information into a recurrent visual generator without displacing identity memory, smearing across the face, or misaligning audio and video time.
 
 \chapter{Conclusion}
 
@@ -1015,7 +1063,7 @@ The results establish a specific, useful boundary. The model can separate identi
 
 The audio experiments identify a second boundary. Dense 32-codebook EnCodec conditioning can flush visual memory, smear speech information across the face, and desynchronize under naive audio-video indexing. Future speech-driven avatars will need localized audio routing, stride-aware data pipelines, and staged conditioning mechanisms that protect identity memory.
 
-Overall, this thesis supports a measured claim: hybrid state-space diffusion architectures are promising for persistent digital avatars, provided their recurrent memory is explicitly constrained against identity collapse. Linear scaling makes the system possible; manifold stabilization makes it meaningful.
+Overall, this thesis supports a measured claim: hybrid state-space diffusion architectures are promising for persistent digital avatars, provided their recurrent memory is explicitly constrained against identity collapse. Linear scaling makes the system possible; identity stabilization makes long-horizon generation usable.
 
 
 \bibliographystyle{plain}
